@@ -117,9 +117,13 @@ void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
-int             wait(void);
+int             wait(int*);
 void            wakeup(void*);
 void            yield(void);
+void            exitStat(int);
+int             waitpid(int, int*,int);
+int             setPriority(int); // Add set Priority function - assignment 2
+int             getPriority(void)
 
 // swtch.S
 void            swtch(struct context**, struct context*);

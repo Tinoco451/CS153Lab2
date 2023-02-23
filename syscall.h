@@ -20,3 +20,7 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+#define SYS_exitStat 22
+#define SYS_waitpid 23
+#define SYS_setPriority 24  //lab2
+#define SYS_getPriority 25  //lab2

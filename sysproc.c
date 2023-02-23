@@ -23,7 +23,11 @@ sys_exit(void)
 int
 sys_wait(void)
 {
-  return wait();
+  int *status;
+  if(argptr(0, (void*)&status, sizeof(status)) < 0) { 
+    return -1; 
+  }
+  return wait(status); 
 }
 
 int
@@ -88,4 +92,42 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+//LAB1  
+int  
+sys_exitStat(int status){
+    argint(0, &status); 
+    exitStat(status);
+    return 0; 
+}
+
+
+int
+sys_waitpid(void)
+{ 
+  int pid;
+  int options = 0;
+  int* status;
+  if(argint(0, &pid) < 0){
+    return -1;
+  }
+  if(argptr(1,(void*)&status, sizeof(status)) < 0){ 
+    return -1; 
+  }
+  return waitpid(pid, status, options);
+}
+//LAB 2
+int sys_setPriority(void)
+{
+    int priority;
+    if (argint(0,&priority)<0){
+        return -1;
+    }
+    return setPriority(priority);
+}
+
+int sys_getPriority(void)
+{
+    return getPriority();
 }
