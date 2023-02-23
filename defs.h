@@ -123,7 +123,7 @@ void            yield(void);
 void            exitStat(int);
 int             waitpid(int, int*,int);
 int             setPriority(int); // Add set Priority function - assignment 2
-int             getPriority(void)
+int             getPriority(void);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
