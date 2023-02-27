@@ -49,8 +49,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  int start_time; 
+  int Tstart;
+  int Tfinish;
+  int Tburst; 
   int priorval;
+  int waitingtime;
   int exitstatus;              //save exit status
 };
 

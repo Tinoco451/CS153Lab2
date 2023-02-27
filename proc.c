@@ -88,6 +88,8 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->priorval = 10;
+  p->waitingtime = 0;
 
   release(&ptable.lock);
 
@@ -111,8 +113,8 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-  p->priorval = 10;
-  p->start_time = ticks;
+ //p->priorval = 10;
+  //p->start_time = ticks;
 
   
   return p;
@@ -186,6 +188,7 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *curproc = myproc();
+  
 
   // Allocate process.
   if((np = allocproc()) == 0){
@@ -210,6 +213,7 @@ fork(void)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
   np->cwd = idup(curproc->cwd);
+  np->priorval =  curproc->priorval;
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
@@ -263,6 +267,12 @@ exit(void)
         wakeup1(initproc);
     }
   }
+
+  curproc->Tfinish = ticks;
+  int timeTurnAround = curproc->Tfinish - curproc->Tstart;
+  int timeWaiting = timeTurnAround-curproc->Tburst;
+  cprintf("Turnaround time: %d\n", timeTurnAround);
+    cprintf("Waiting time: %d\n", timeWaiting);
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
@@ -328,53 +338,78 @@ wait(int *status)
 void
 scheduler(void)
 {
-  struct proc *p;
-  struct cpu *c = mycpu();
-  c->proc = 0;
-  int low_priority; //lab2
-  
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
 
-    // Loop over process table looking for process to run.
-    low_priority = 1000;
-    acquire(&ptable.lock);
+    struct proc *p;
+    struct cpu *c = mycpu();
+    c->proc = 0;
+    int lowpriority;
 
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state == RUNNABLE && p->priorval < low_priority){
-        low_priority = p->priorval;
-      }
-    }
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if (p->state != RUNNABLE){
-        continue;
-      }
-      if(p->priorval != low_priority){
-        if(p->priorval > 0 ){
-          p->priorval--;
+    struct proc *p2; //Round robin: next runnable process p. Step 3
+    struct proc *min_prior; //Process with minimum priority from all processes. Step 3
+
+    for(;;){
+        // Enable interrupts on this processor.
+        sti();
+
+        // Loop over process table looking for process to run.
+        lowpriority = 1000;
+        acquire(&ptable.lock);
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+            if(p->state != RUNNABLE && p->priorval < lowpriority){
+              lowpriority = p->priorval;
+            }
         }
-        continue;
-      }
-    
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+          if(p->state != RUNNABLE){
+            continue;
+          }
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      p->priorval++;
+          if(p->priorval != lowpriority){
+            if(p->priorval >0 ){
+              p->priorval--;
+            }
+            continue;
+          }
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+          min_prior = p; //Round robin: acquires resource and starts running. Step 3
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
+            for (p2 = ptable.proc; p2 < &ptable.proc[NPROC]; p2++) { //Step 3
+                if(p2->state != RUNNABLE)
+                    continue;
+                min_prior = p2;  // Priority scheduling
+                min_prior->Tburst = min_prior->Tburst + 1; //Step 5
+            }
 
+            //Step 4 If a process waits increase its priority
+            // (decrease its value). When it runs, decrease it (increase its value)
+            for (p2 = ptable.proc; p2 < &ptable.proc[NPROC]; p2++) {
+                if(p2->state != RUNNABLE || p2 == min_prior)
+                    continue;
+
+                if (p2->state == RUNNABLE && p2->priorval > 0) {
+                    p2->priorval--;
+                }
+                if (min_prior->priorval < 31) {
+                    min_prior->priorval++;
+                }
+            }
+
+            // Switch to chosen process.  It is the process's job
+            // to release ptable.lock and then reacquire it
+            // before jumping back to us.
+
+            //Step 3. RUNNABLE process acquires CPU resources and start RUNNING;
+            c->proc = p;
+            switchuvm(p);
+            p->state = RUNNING;
+
+            swtch(&(c->scheduler), p->context);
+            switchkvm();
+            // Process is done running for now.
+            // It should have changed its p->state before coming back.
+            c->proc = 0;
+        }
+        release(&ptable.lock);
   }
 }
 
@@ -661,12 +696,16 @@ waitpid(int pid, int* status, int options)
 //Lab 2
 
 //get and set priority of process - assignment 2
-int setPriority(int priority)
+void setPriority(int priority)
 {
-    struct proc *p = myproc();
-    p->priorval = priority;
-    return 0;
+  //change the priority value of the current proc. Step 2
+  struct  proc *currentProc = myproc();
+  currentProc->priorval = priority;
+
+  // transfer control to scheduler immediately because the priority rank has been changed. Step 2
+  yield();
 }
+
 
 int
 getPriority()

@@ -122,7 +122,7 @@ void            wakeup(void*);
 void            yield(void);
 void            exitStat(int);
 int             waitpid(int, int*,int);
-int             setPriority(int); // Add set Priority function - assignment 2
+void             setPriority(int); // Add set Priority function - assignment 2
 int             getPriority(void);
 
 // swtch.S

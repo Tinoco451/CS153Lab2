@@ -118,13 +118,21 @@ sys_waitpid(void)
   return waitpid(pid, status, options);
 }
 //LAB 2
-int sys_setPriority(void)
+void sys_setPriority(void)
 {
-    int priority;
-    if (argint(0,&priority)<0){
-        return -1;
+  int prior_val = 0;
+    argint(0, &prior_val);
+
+    //Step 1: Add new field to proc structure
+    if (prior_val > 31) {
+        setPriority(31);
     }
-    return setPriority(priority);
+    else if (prior_val < 0) {
+        setPriority(0);
+    }
+    else {
+        setPriority(prior_val);
+    }
 }
 
 int sys_getPriority(void)
