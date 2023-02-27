@@ -29,4 +29,6 @@ int main() {
     }
     printf(0, "parent %d done\n", getpid());
     exit();
+
+    return 0;
 }

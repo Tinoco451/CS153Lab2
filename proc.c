@@ -350,28 +350,12 @@ scheduler(void)
     for(;;){
         // Enable interrupts on this processor.
         sti();
-
-        // Loop over process table looking for process to run.
-        lowpriority = 1000;
         acquire(&ptable.lock);
         for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-            if(p->state != RUNNABLE && p->priorval < lowpriority){
-              lowpriority = p->priorval;
-            }
-        }
-        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-          if(p->state != RUNNABLE){
-            continue;
-          }
+            if(p->state != RUNNABLE)
+                continue;
 
-          if(p->priorval != lowpriority){
-            if(p->priorval >0 ){
-              p->priorval--;
-            }
-            continue;
-          }
-
-          min_prior = p; //Round robin: acquires resource and starts running. Step 3
+            min_prior = p; //Round robin: acquires resource and starts running. Step 3
 
             for (p2 = ptable.proc; p2 < &ptable.proc[NPROC]; p2++) { //Step 3
                 if(p2->state != RUNNABLE)
