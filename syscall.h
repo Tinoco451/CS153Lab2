@@ -24,3 +24,5 @@
 #define SYS_waitpid 23
 #define SYS_setPriority 24  //lab2
 #define SYS_getPriority 25  //lab2
+//#define SYS_lottery_schedule 26 //lab2
+//#define SYS_total_tickets 27 //lab2

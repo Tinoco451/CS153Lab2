@@ -120,10 +120,10 @@ sys_waitpid(void)
 //LAB 2
 void sys_setPriority(void)
 {
-  int prior_val = 0;
+    int prior_val = 0;
     argint(0, &prior_val);
 
-    //Step 1: Add new field to proc structure
+    
     if (prior_val > 31) {
         setPriority(31);
     }
@@ -139,3 +139,12 @@ int sys_getPriority(void)
 {
     return getPriority();
 }
+
+//int sys_total_tickets(void){
+//  return total_tickets();
+//}
+
+//void
+//sys_lottery_schedule(void){
+//  return lottery_schedule();
+//}

@@ -122,8 +122,12 @@ void            wakeup(void*);
 void            yield(void);
 void            exitStat(int);
 int             waitpid(int, int*,int);
-void             setPriority(int); // Add set Priority function - assignment 2
+void            setPriority(int); // Add set Priority function - assignment 2
 int             getPriority(void);
+//int            total_tickets(void);
+//void            loterry_schedule(void);
+
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);

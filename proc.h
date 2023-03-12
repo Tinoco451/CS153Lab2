@@ -54,8 +54,11 @@ struct proc {
   int Tburst; 
   int priorval;
   int waitingtime;
-  int exitstatus;              //save exit status
+  int exitstatus;  
+  
+              
 };
+
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

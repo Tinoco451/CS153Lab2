@@ -109,6 +109,9 @@ extern int sys_waitpid(void);
 //lab2
 extern int sys_setPriority(void);
 extern int sys_getPriority(void);
+//extern int sys_lottery_schedule(void);
+//extern int sys_total_tickets(void);
+
 
 
 static int (*syscalls[])(void) = {
@@ -137,6 +140,8 @@ static int (*syscalls[])(void) = {
 [SYS_waitpid]	sys_waitpid,          //lab1
 [SYS_setPriority] sys_setPriority, //lab2
 [SYS_getPriority] sys_getPriority, //lab2
+//[SYS_lottery_schedule] sys_lottery_schedule, //lab2
+//[SYS_total_tickets] sys_total_tickets, //lab2
 };
 
 void

@@ -7,12 +7,20 @@
 #include "proc.h"
 #include "spinlock.h"
 
+//static unsigned int seed = 1;
+
+//int rand (void) {
+//    seed = (seed * 1103515245U + 12345U) & 0x7fffffffU;
+//    return (int)seed;
+//}
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
 
 static struct proc *initproc;
+//static int totaltick = 0;
+//static int nexttick = 1;
 
 int nextpid = 1;
 extern void forkret(void);
@@ -89,7 +97,10 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->priorval = 10;
-  p->waitingtime = 0;
+  //p->waitingtime = 0;
+  //p->tickets = 1;
+  //p->totaltickets = totaltick;
+
 
   release(&ptable.lock);
 
@@ -213,16 +224,16 @@ fork(void)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
   np->cwd = idup(curproc->cwd);
-  np->priorval =  curproc->priorval;
+    np->priorval =  curproc->priorval;
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-
+  //np->tickets = curproc->tickets;
   pid = np->pid;
 
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
+  
   release(&ptable.lock);
 
   return pid;
@@ -272,7 +283,7 @@ exit(void)
   int timeTurnAround = curproc->Tfinish - curproc->Tstart;
   int timeWaiting = timeTurnAround-curproc->Tburst;
   cprintf("Turnaround time: %d\n", timeTurnAround);
-    cprintf("Waiting time: %d\n", timeWaiting);
+  cprintf("Waiting time: %d\n", timeWaiting);
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
@@ -338,64 +349,96 @@ wait(int *status)
 void
 scheduler(void)
 {
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  int low_priority; 
+  struct proc *p2;
+  struct proc *min_prior;
+  
+  for(;;){
+    // Enable interrupts on this processor.
+    sti();
 
-    struct proc *p;
-    struct cpu *c = mycpu();
-    c->proc = 0;
-    int lowpriority;
+    // Loop over process table looking for process to run.
+    low_priority = 1000;
+    acquire(&ptable.lock);
+    min_prior = p; 
+    for (p2 = ptable.proc; p2 < &ptable.proc[NPROC]; p2++) { 
+      if(p2->state != RUNNABLE)
+          continue;
+          min_prior = p2;  
+          min_prior->Tburst = min_prior->Tburst + 1; 
+    }
 
-    struct proc *p2; //Round robin: next runnable process p. Step 3
-    struct proc *min_prior; //Process with minimum priority from all processes. Step 3
-
-    for(;;){
-        // Enable interrupts on this processor.
-        sti();
-        acquire(&ptable.lock);
-        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-            if(p->state != RUNNABLE)
-                continue;
-
-            min_prior = p; //Round robin: acquires resource and starts running. Step 3
-
-            for (p2 = ptable.proc; p2 < &ptable.proc[NPROC]; p2++) { //Step 3
-                if(p2->state != RUNNABLE)
-                    continue;
-                min_prior = p2;  // Priority scheduling
-                min_prior->Tburst = min_prior->Tburst + 1; //Step 5
-            }
-
-            //Step 4 If a process waits increase its priority
-            // (decrease its value). When it runs, decrease it (increase its value)
-            for (p2 = ptable.proc; p2 < &ptable.proc[NPROC]; p2++) {
-                if(p2->state != RUNNABLE || p2 == min_prior)
-                    continue;
-
-                if (p2->state == RUNNABLE && p2->priorval > 0) {
-                    p2->priorval--;
-                }
-                if (min_prior->priorval < 31) {
-                    min_prior->priorval++;
-                }
-            }
-
-            // Switch to chosen process.  It is the process's job
-            // to release ptable.lock and then reacquire it
-            // before jumping back to us.
-
-            //Step 3. RUNNABLE process acquires CPU resources and start RUNNING;
-            c->proc = p;
-            switchuvm(p);
-            p->state = RUNNING;
-
-            swtch(&(c->scheduler), p->context);
-            switchkvm();
-            // Process is done running for now.
-            // It should have changed its p->state before coming back.
-            c->proc = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state == RUNNABLE && p->priorval < low_priority){
+        low_priority = p->priorval;
+      }
+    }
+    
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if (p->state != RUNNABLE){
+        continue;
+      }
+      if(p->priorval != low_priority){
+        if(p->priorval > 0 ){
+          p->priorval--;
         }
-        release(&ptable.lock);
+        continue;
+      }
+    
+
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      p->priorval++;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&ptable.lock);
+
   }
 }
+
+// void 
+// lottery_schedule(void){
+//   struct proc *p;
+//   struct cpu *c = mycpu();
+//   c->proc = 0;
+//   int total = 0;
+//   for(;;){
+//     sti();
+//     total = total_tickets();
+//     if(total == 0){
+//       continue;
+//     }
+//     int r = rand() % total;
+//     int sum = 0;
+//     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//       if(p->state != RUNNABLE){
+//         continue;
+//       }
+//       sum += p->tickets;
+//       if(sum > r){
+//         break;
+//       }
+//     }
+//     switchuvm(p);
+//     p->state = RUNNING;
+//     swtch(&(c->scheduler), p->context);
+//     switchkvm();
+//     p = 0;
+//   }
+// }
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -615,6 +658,11 @@ exitStat(int status)
 	wakeup1(initproc);
     }
   }
+  curproc->Tfinish = ticks;
+  int timeTurnAround = curproc->Tfinish - curproc->Tstart;
+  int timeWaiting = timeTurnAround-curproc->Tburst;
+  cprintf("Turnaround time: %d\n", timeTurnAround);
+  cprintf("Waiting time: %d\n", timeWaiting);
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
@@ -697,3 +745,32 @@ getPriority()
     struct proc *curproc = myproc();
     return curproc->priorval;
 }
+
+//int total_tickets(void){
+//  struct proc *p;
+//  int total = 0;
+//  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//    if(p->state == RUNNABLE){
+//      total += p->tickets;
+//    }
+//  }
+//  return total;
+//}
+
+//struct proc*
+//lottery_scheduelr(void){
+//  int i, winning_ticket;
+//  struct proc *p;
+
+//  winning_ticket = random() % totaltick;
+
+//  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//    if(p->state != RUNNABLE){
+//      continue;
+//    }
+//    if(winning_ticket >= p->lottery.totaltickets && winning_ticket < p->lottery.totaltickets + p->lottery.tickets){
+//      return p;
+//    }
+//  }
+//  return 0;
+//}

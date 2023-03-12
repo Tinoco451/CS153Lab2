@@ -1,0 +1,415 @@
+diff --git a/defs.h b/defs.h
+index b82539d..ccb53f5 100644
+--- a/defs.h
++++ b/defs.h
+@@ -122,8 +122,12 @@ void            wakeup(void*);
+ void            yield(void);
+ void            exitStat(int);
+ int             waitpid(int, int*,int);
+-void             setPriority(int); // Add set Priority function - assignment 2
++void            setPriority(int); // Add set Priority function - assignment 2
+ int             getPriority(void);
++//int            total_tickets(void);
++//void            loterry_schedule(void);
++
++
+ 
+ // swtch.S
+ void            swtch(struct context**, struct context*);
+diff --git a/exec.c b/exec.c
+index b40134f..36009bc 100644
+--- a/exec.c
++++ b/exec.c
+@@ -99,6 +99,8 @@ exec(char *path, char **argv)
+   curproc->sz = sz;
+   curproc->tf->eip = elf.entry;  // main
+   curproc->tf->esp = sp;
++  //curproc->Tstart = ticks;
++  //curproc->Tburst = 0;
+   switchuvm(curproc);
+   freevm(oldpgdir);
+   return 0;
+diff --git a/proc.c b/proc.c
+index db8850d..688e625 100644
+--- a/proc.c
++++ b/proc.c
+@@ -7,12 +7,20 @@
+ #include "proc.h"
+ #include "spinlock.h"
+ 
++//static unsigned int seed = 1;
++
++//int rand (void) {
++//    seed = (seed * 1103515245U + 12345U) & 0x7fffffffU;
++//    return (int)seed;
++//}
+ struct {
+   struct spinlock lock;
+   struct proc proc[NPROC];
+ } ptable;
+ 
+ static struct proc *initproc;
++//static int totaltick = 0;
++//static int nexttick = 1;
+ 
+ int nextpid = 1;
+ extern void forkret(void);
+@@ -89,7 +97,10 @@ found:
+   p->state = EMBRYO;
+   p->pid = nextpid++;
+   p->priorval = 10;
+-  p->waitingtime = 0;
++  //p->waitingtime = 0;
++  //p->tickets = 1;
++  //p->totaltickets = totaltick;
++
+ 
+   release(&ptable.lock);
+ 
+@@ -213,16 +224,16 @@ fork(void)
+     if(curproc->ofile[i])
+       np->ofile[i] = filedup(curproc->ofile[i]);
+   np->cwd = idup(curproc->cwd);
+-  np->priorval =  curproc->priorval;
++    np->priorval =  curproc->priorval;
+ 
+   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+-
++  //np->tickets = curproc->tickets;
+   pid = np->pid;
+ 
+   acquire(&ptable.lock);
+ 
+   np->state = RUNNABLE;
+-
++  
+   release(&ptable.lock);
+ 
+   return pid;
+@@ -272,7 +283,7 @@ exit(void)
+   int timeTurnAround = curproc->Tfinish - curproc->Tstart;
+   int timeWaiting = timeTurnAround-curproc->Tburst;
+   cprintf("Turnaround time: %d\n", timeTurnAround);
+-    cprintf("Waiting time: %d\n", timeWaiting);
++  cprintf("Waiting time: %d\n", timeWaiting);
+ 
+   // Jump into the scheduler, never to return.
+   curproc->state = ZOMBIE;
+@@ -338,11 +349,9 @@ wait(int *status)
+ void
+ scheduler(void)
+ {
+-
+     struct proc *p;
+     struct cpu *c = mycpu();
+     c->proc = 0;
+-    int lowpriority;
+ 
+     struct proc *p2; //Round robin: next runnable process p. Step 3
+     struct proc *min_prior; //Process with minimum priority from all processes. Step 3
+@@ -350,6 +359,8 @@ scheduler(void)
+     for(;;){
+         // Enable interrupts on this processor.
+         sti();
++
++        // Loop over process table looking for process to run.
+         acquire(&ptable.lock);
+         for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+             if(p->state != RUNNABLE)
+@@ -389,13 +400,46 @@ scheduler(void)
+ 
+             swtch(&(c->scheduler), p->context);
+             switchkvm();
++
++
+             // Process is done running for now.
+             // It should have changed its p->state before coming back.
+             c->proc = 0;
+         }
+         release(&ptable.lock);
+-  }
++
++    }
+ }
++// void 
++// lottery_schedule(void){
++//   struct proc *p;
++//   struct cpu *c = mycpu();
++//   c->proc = 0;
++//   int total = 0;
++//   for(;;){
++//     sti();
++//     total = total_tickets();
++//     if(total == 0){
++//       continue;
++//     }
++//     int r = rand() % total;
++//     int sum = 0;
++//     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
++//       if(p->state != RUNNABLE){
++//         continue;
++//       }
++//       sum += p->tickets;
++//       if(sum > r){
++//         break;
++//       }
++//     }
++//     switchuvm(p);
++//     p->state = RUNNING;
++//     swtch(&(c->scheduler), p->context);
++//     switchkvm();
++//     p = 0;
++//   }
++// }
+ 
+ // Enter scheduler.  Must hold only ptable.lock
+ // and have changed proc->state. Saves and restores
+@@ -615,6 +659,11 @@ exitStat(int status)
+ 	wakeup1(initproc);
+     }
+   }
++  curproc->Tfinish = ticks;
++  int timeTurnAround = curproc->Tfinish - curproc->Tstart;
++  int timeWaiting = timeTurnAround-curproc->Tburst;
++  cprintf("Turnaround time: %d\n", timeTurnAround);
++  cprintf("Waiting time: %d\n", timeWaiting);
+ 
+   // Jump into the scheduler, never to return.
+   curproc->state = ZOMBIE;
+@@ -697,3 +746,32 @@ getPriority()
+     struct proc *curproc = myproc();
+     return curproc->priorval;
+ }
++
++//int total_tickets(void){
++//  struct proc *p;
++//  int total = 0;
++//  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
++//    if(p->state == RUNNABLE){
++//      total += p->tickets;
++//    }
++//  }
++//  return total;
++//}
++
++//struct proc*
++//lottery_scheduelr(void){
++//  int i, winning_ticket;
++//  struct proc *p;
++
++//  winning_ticket = random() % totaltick;
++
++//  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
++//    if(p->state != RUNNABLE){
++//      continue;
++//    }
++//    if(winning_ticket >= p->lottery.totaltickets && winning_ticket < p->lottery.totaltickets + p->lottery.tickets){
++//      return p;
++//    }
++//  }
++//  return 0;
++//}
+\ No newline at end of file
+diff --git a/proc.h b/proc.h
+index 1662230..eb7dec6 100644
+--- a/proc.h
++++ b/proc.h
+@@ -54,9 +54,12 @@ struct proc {
+   int Tburst; 
+   int priorval;
+   int waitingtime;
+-  int exitstatus;              //save exit status
++  int exitstatus;  
++  
++              
+ };
+ 
++
+ // Process memory is laid out contiguously, low addresses first:
+ //   text
+ //   original data and bss
+diff --git a/syscall.c b/syscall.c
+index 7f1d696..08f9e03 100644
+--- a/syscall.c
++++ b/syscall.c
+@@ -109,6 +109,9 @@ extern int sys_waitpid(void);
+ //lab2
+ extern int sys_setPriority(void);
+ extern int sys_getPriority(void);
++//extern int sys_lottery_schedule(void);
++//extern int sys_total_tickets(void);
++
+ 
+ 
+ static int (*syscalls[])(void) = {
+@@ -137,6 +140,8 @@ static int (*syscalls[])(void) = {
+ [SYS_waitpid]	sys_waitpid,          //lab1
+ [SYS_setPriority] sys_setPriority, //lab2
+ [SYS_getPriority] sys_getPriority, //lab2
++//[SYS_lottery_schedule] sys_lottery_schedule, //lab2
++//[SYS_total_tickets] sys_total_tickets, //lab2
+ };
+ 
+ void
+diff --git a/syscall.h b/syscall.h
+index 102ee6e..69cd043 100644
+--- a/syscall.h
++++ b/syscall.h
+@@ -23,4 +23,6 @@
+ #define SYS_exitStat 22
+ #define SYS_waitpid 23
+ #define SYS_setPriority 24  //lab2
+-#define SYS_getPriority 25  //lab2
+\ No newline at end of file
++#define SYS_getPriority 25  //lab2
++//#define SYS_lottery_schedule 26 //lab2
++//#define SYS_total_tickets 27 //lab2
+\ No newline at end of file
+diff --git a/sysproc.c b/sysproc.c
+index f0954c9..a29eaa3 100644
+--- a/sysproc.c
++++ b/sysproc.c
+@@ -120,7 +120,7 @@ sys_waitpid(void)
+ //LAB 2
+ void sys_setPriority(void)
+ {
+-  int prior_val = 0;
++    int prior_val = 0;
+     argint(0, &prior_val);
+ 
+     //Step 1: Add new field to proc structure
+@@ -138,4 +138,13 @@ void sys_setPriority(void)
+ int sys_getPriority(void)
+ {
+     return getPriority();
+-}
+\ No newline at end of file
++}
++
++//int sys_total_tickets(void){
++//  return total_tickets();
++//}
++
++//void
++//sys_lottery_schedule(void){
++//  return lottery_schedule();
++//}
+\ No newline at end of file
+diff --git a/test.c b/test.c
+index d5d4b93..c79c975 100644
+--- a/test.c
++++ b/test.c
+@@ -1,34 +1,61 @@
++
+ #include "types.h"
+ #include "user.h"
+ 
+-void work() {
+-    int i,k;
+-    for(i = 0; i < 43000; i++) {
+-        for(k = 0; k < 43000; k++) {
+-            asm("nop");
++int PScheduler(void);
++
++int main(int argc, char *argv[])
++{
++    PScheduler();
++
++    exitStat(0);
++
++    return 0;
++}    
++      
++int PScheduler(void){
++		 
++    // Use this part to test the priority scheduler. Assuming that the priorities range between range between 0 to 31
++    // 0 is the highest priority. All processes have a default priority of 10
++    // You can use your own priority range/value setup
++
++    int pid, ret_pid, exit_status;
++    int i,j,k;
++  
++    printf(1, "Testing the priority scheduler and setpriority system call:\n");
++    printf(1, "Assuming that the priorities range between range between 0 to 31\n");
++    printf(1, "0 is the highest priority. All processes have a default priority of 10\n");
++    printf(1, " - The parent processes will switch to priority 0\n");
++    setPriority(0); // Use your own setpriority interface
++    for (i = 0; i < 3; i++) {
++	pid = fork();
++	if (pid > 0) {
++            continue;
++        } else if ( pid == 0) {
++            printf(1, " - Hello! this is child# %d and I will change my priority to %d \n", getpid(), 60 - 20 * i);
++            setPriority(30 - 10 * i); // Use your own setpriority interface
++            for (j = 0; j < 50000; j++) {
++                asm("nop");
++                for(k = 0; k < 10000; k++) {
++                    asm("nop"); 
++                }
++            }
++            printf(1, " - Child #%d with priority %d has finished! \n", getpid(), 30-10*i);		
++            exitStat(0);
++        } else {
++            printf(2," \n Error fork() \n");
++            exitStat(-1);
+         }
+     }
+-}
+ 
+-int main() {
+-    setPriority(0);
+-    int i = 0;
+-    int pid = 0;
+-    for(i = 0; i < 3; i++) {
+-        pid = fork();
+-        if(!pid) {
+-            setPriority(i * 10);
+-            work();
+-            printf(0, "child %d done\n", getpid());
+-            exit();
++    if(pid > 0) {
++        for (i = 0; i < 3; i++) {
++            ret_pid = wait(&exit_status);
++            printf(1, " - This is the parent: child with PID# %d has finished with status %d \n", ret_pid, exit_status);
+         }
++        printf(1, " - If processes with highest priority finished first then its correct. \n");
+     }
+-    if(pid) {
+-        for(i = 0; i < 3; i++)
+-            wait(0);
+-    }
+-    printf(0, "parent %d done\n", getpid());
+-    exit();
+-
++			
+     return 0;
+-}
+\ No newline at end of file
++}
++
+diff --git a/user.h b/user.h
+index 36e071f..7d90693 100644
+--- a/user.h
++++ b/user.h
+@@ -29,6 +29,10 @@ int waitpid(int, int*, int);
+ //lab2 
+ void setPriority(int);
+ int getPriority(void);
++//void lottery_schedule(void);
++//int total_tickets(void);
++
++
+ // ulib.c
+ int stat(const char*, struct stat*);
+ char* strcpy(char*, const char*);
+diff --git a/usys.S b/usys.S
+index a6d7b39..4597b3d 100644
+--- a/usys.S
++++ b/usys.S
+@@ -32,4 +32,4 @@ SYSCALL(uptime)
+ SYSCALL(setPriority)
+ SYSCALL(getPriority)
+ SYSCALL(exitStat)
+-SYSCALL(waitpid)
+\ No newline at end of file
++SYSCALL(waitpid)

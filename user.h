@@ -29,6 +29,10 @@ int waitpid(int, int*, int);
 //lab2 
 void setPriority(int);
 int getPriority(void);
+//void lottery_schedule(void);
+//int total_tickets(void);
+
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);
