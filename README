@@ -3,7 +3,7 @@ Members: Miguelangel Tinoco | Sathya Rajesh
 
 # Description        
 
-Implemented lottery scheduling in the XV6 operating system as a scheduler policy to provide 
+Implemented priority scheduling in the XV6 operating system as a scheduler policy to provide 
 fail allocation of CPU resources among processes using tools like GDB and QEMU to test the implementation.
 
 In order to be able to change the priority value of the current process, we created a function that 
